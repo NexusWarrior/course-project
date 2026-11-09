@@ -1,7 +1,7 @@
 FROM eclipse-temurin:21-jdk AS build
 WORKDIR /app
 COPY . .
-RUN ./gradlew --no-daemon installDist
+RUN ./gradlew --no-daemon test installDist
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app

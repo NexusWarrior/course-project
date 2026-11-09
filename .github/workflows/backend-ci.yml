@@ -1,0 +1,35 @@
+name: Проверка серверной части
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Получить код
+        uses: actions/checkout@v6
+
+      - name: Запустить тесты, собрать образ и поднять стенд
+        run: docker compose up --build --wait
+
+      - name: Проверить ответ API
+        run: |
+          curl --fail --silent --show-error --retry 10 --retry-connrefused \
+            http://127.0.0.1:8080/tasks \
+            | jq -e 'type == "array" and length == 2'
+
+      - name: Показать журналы при ошибке
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Остановить стенд
+        if: always()
+        run: docker compose down --volumes
