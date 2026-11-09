@@ -22,4 +22,5 @@ dependencies {
 
     testImplementation(kotlin("test"))
     testImplementation(ktorLibs.server.testHost)
+    implementation(libs.postgresql)
 }

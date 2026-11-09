@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: tasks
+      POSTGRES_USER: tasks_user
+      POSTGRES_PASSWORD: tasks_local_password
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-h", "127.0.0.1", "-U", "tasks_user", "-d", "tasks" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  backend:
+    build: ./backend/ktor-project
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/tasks
+      DB_USER: tasks_user
+      DB_PASSWORD: tasks_local_password
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+volumes:
+  postgres_data:
