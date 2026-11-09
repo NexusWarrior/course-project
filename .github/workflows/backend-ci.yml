@@ -22,9 +22,11 @@ jobs:
 
       - name: Проверить ответ API
         run: |
-          curl --fail --silent --show-error --retry 10 --retry-connrefused \
-            http://127.0.0.1:8080/tasks \
-            | jq -e 'type == "array" and length == 2'
+          curl --fail --silent --show-error \
+            --retry 10 --retry-all-errors --retry-delay 2 --max-time 5 \
+            --output tasks-response.json \
+            http://127.0.0.1:8080/tasks
+          jq -e 'type == "array" and length == 2' tasks-response.json
 
       - name: Показать журналы при ошибке
         if: failure()
