@@ -23,4 +23,5 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation(ktorLibs.server.testHost)
     implementation(libs.postgresql)
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.21.1")
 }
