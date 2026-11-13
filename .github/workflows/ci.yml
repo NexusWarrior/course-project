@@ -38,8 +38,10 @@ jobs:
           distribution: temurin
           java-version: '25'
       - uses: gradle/actions/setup-gradle@v5
+      - name: Настроить инструменты Android SDK
+        uses: android-actions/setup-android@v4
       - name: Установить SDK Android
-        run: sdkmanager 'platforms;android-37.0'
+        run: sdkmanager --install 'platforms;android-37.0'
       - name: Собрать APK и запустить JVM-тесты
         working-directory: android/NiaspoProject
         run: ./gradlew assembleDebug assembleDebugAndroidTest testDebugUnitTest
