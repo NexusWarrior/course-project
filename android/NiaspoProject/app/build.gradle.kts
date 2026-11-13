@@ -1,8 +1,17 @@
+import java.io.File
 import java.net.URI
+import java.util.UUID
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+}
+
+// Keep generated artifacts outside the macOS Desktop folder synced by iCloud.
+if (providers.systemProperty("os.name").get().startsWith("Mac")) {
+    val projectId = UUID.nameUUIDFromBytes(rootDir.absolutePath.toByteArray(Charsets.UTF_8))
+    val cacheDir = File(providers.systemProperty("user.home").get(), "Library/Caches/niaspo/$projectId/app")
+    layout.buildDirectory.set(cacheDir)
 }
 
 val apiUrl = providers.gradleProperty("taskApiUrl").orElse("http://10.0.2.2:8080").get()

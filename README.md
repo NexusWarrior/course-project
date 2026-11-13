@@ -39,7 +39,7 @@ bash scripts/check-api.sh http://127.0.0.1:8080 crud
 (cd android/NiaspoProject && ./gradlew connectedDebugAndroidTest)
 ```
 
-APK находится в `android/NiaspoProject/app/build/outputs/apk/debug/`. Отчёты JVM-тестов и тестов на эмуляторе находятся в `app/build/test-results/` и `app/build/outputs/androidTest-results/` соответственно. Серверные тесты покрывают операции с задачами, невалидные запросы и недоступность базы. Проверка с Compose отдельно прогоняет эти операции с реальной PostgreSQL. Тесты Android проверяют загрузку данных и полный сценарий изменения задачи через интерфейс.
+В Linux и CI Android использует каталог `android/NiaspoProject/app/build/`. На macOS результаты сборки модуля хранятся в `~/Library/Caches/niaspo/<идентификатор проекта>/app/`, вне синхронизируемого рабочего стола. APK находится в подкаталоге `outputs/apk/debug/`, отчёты JVM-тестов и тестов на эмуляторе — в `test-results/` и `outputs/androidTest-results/` соответственно. Серверные тесты покрывают операции с задачами, невалидные запросы и недоступность базы. Проверка с Compose отдельно прогоняет эти операции с реальной PostgreSQL. Тесты Android проверяют загрузку данных и полный сценарий изменения задачи через интерфейс.
 
 `docker compose down` останавливает локальный стенд. Именованный том сохраняет данные. Для тестов с чистой базой используйте отдельный временный проект Compose или удалите локальный том командой `docker compose down --volumes`, если данные больше не нужны. Скрипт `db/init.sql` выполняется при инициализации пустого тома.
 
