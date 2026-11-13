@@ -1,0 +1,141 @@
+name: Проверка и развёртывание проекта
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Тесты Ktor и PostgreSQL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Собрать сервер и поднять тестовый стенд
+        run: docker compose up --build --wait
+      - name: Проверить операции API с PostgreSQL
+        run: bash scripts/check-api.sh http://127.0.0.1:8080 crud
+      - name: Показать журналы при сбое
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Удалить временный стенд
+        if: always()
+        run: docker compose down --volumes
+
+  android:
+    name: Сборка APK и тесты Android
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Установить SDK Android
+        run: sdkmanager 'platforms;android-37.0'
+      - name: Собрать APK и запустить JVM-тесты
+        working-directory: android/NiaspoProject
+        run: ./gradlew assembleDebug assembleDebugAndroidTest testDebugUnitTest
+      - name: Сохранить APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-debug-apk
+          path: android/NiaspoProject/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+      - name: Поднять сервер и базу
+        run: |
+          docker compose up --build --wait
+          bash scripts/check-api.sh
+      - name: Включить KVM для эмулятора
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Запустить сквозные тесты
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          working-directory: android/NiaspoProject
+          script: ./gradlew connectedDebugAndroidTest
+      - name: Сохранить результаты тестов
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-test-results
+          path: |
+            android/NiaspoProject/app/build/test-results/
+            android/NiaspoProject/app/build/outputs/androidTest-results/
+      - name: Показать журналы при сбое
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Удалить временный стенд
+        if: always()
+        run: docker compose down --volumes
+
+  publish:
+    name: Публикация серверного образа
+    needs: [backend, android]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.reference }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Вычислить имя образа
+        id: image
+        run: echo "reference=ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - name: Войти в GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Собрать и опубликовать образ
+        env:
+          IMAGE: ${{ steps.image.outputs.reference }}
+        run: |
+          docker build -t "$IMAGE" backend/ktor-project
+          docker push "$IMAGE"
+
+  deploy:
+    name: Обновление тестового стенда Swarm
+    needs: publish
+    if: vars.SWARM_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: staging
+    concurrency:
+      group: staging-swarm
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+      - name: Обновить сервис и проверить API
+        env:
+          IMAGE: ${{ needs.publish.outputs.image }}
+          SSH_HOST: ${{ vars.SWARM_SSH_HOST }}
+          SSH_USER: ${{ vars.SWARM_SSH_USER }}
+          SSH_KEY: ${{ secrets.SWARM_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SWARM_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          : "${SSH_HOST:?}" "${SSH_USER:?}" "${SSH_KEY:?}" "${SSH_KNOWN_HOSTS:?}"
+          umask 077
+          ssh_dir=$(mktemp -d)
+          trap 'rm -rf "$ssh_dir"' EXIT
+          printf '%s\n' "$SSH_KEY" > "$ssh_dir/key"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$ssh_dir/known_hosts" -o ConnectTimeout=15 \
+            -i "$ssh_dir/key" -l "$SSH_USER" -- "$SSH_HOST" \
+            "bash -s -- '$IMAGE'" < deploy/update.sh
